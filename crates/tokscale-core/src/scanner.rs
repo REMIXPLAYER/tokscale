@@ -1563,6 +1563,35 @@ fn devin_cli_additional_roots(home_dir: &str, use_env_roots: bool) -> Vec<PathBu
     roots
 }
 
+// Goose CLI uses the native roaming directory; Desktop synthesizes APPDATA
+// from HOME when it is absent. Keep selection independent of the system lookup
+// so both layouts can be tested without fixtures in the real Windows profile.
+#[cfg(any(target_os = "windows", test))]
+fn discover_goose_windows_db(
+    app_data: Option<PathBuf>,
+    native_roaming: Option<PathBuf>,
+    desktop_home: Option<PathBuf>,
+) -> Option<PathBuf> {
+    let desktop_roaming = if app_data.is_none() {
+        desktop_home
+            .filter(|home| home.is_absolute())
+            .map(|home| home.join("AppData").join("Roaming"))
+    } else {
+        None
+    };
+    [app_data.or(native_roaming), desktop_roaming]
+        .into_iter()
+        .flatten()
+        .map(|root| {
+            root.join("Block")
+                .join("goose")
+                .join("data")
+                .join("sessions")
+                .join("sessions.db")
+        })
+        .find(|db| db.is_file())
+}
+
 fn supports_extra_dir_scanning(client_id: ClientId) -> bool {
     // Kilo CLI currently loads a single SQLite DB via `scan_result.kilo_db`
     // Roo/KiloCode require local + remote and server task roots, and Crush
@@ -2608,6 +2637,24 @@ fn scan_all_clients_with_env_strategy_inner(
                 result.goose_db = Some(legacy_xdg_path);
             }
         }
+        #[cfg(target_os = "windows")]
+        if use_env_roots && result.goose_db.is_none() {
+            let app_data = std::env::var_os("APPDATA")
+                .filter(|value| !value.is_empty())
+                .map(PathBuf::from);
+            let profile_home = std::env::home_dir();
+            // Match Goose's etcetera strategy, not Tokscale's HOME redirect.
+            let native_roaming = dirs::data_dir().or_else(|| {
+                profile_home
+                    .as_ref()
+                    .map(|home| home.join("AppData").join("Roaming"))
+            });
+            let desktop_home = std::env::var_os("HOME")
+                .filter(|value| !value.is_empty())
+                .map(PathBuf::from)
+                .or(profile_home);
+            result.goose_db = discover_goose_windows_db(app_data, native_roaming, desktop_home);
+        }
     }
 
     if enabled.contains(&ClientId::Zed) {
@@ -3059,6 +3106,263 @@ mod tests {
     use std::fs::{self, File};
     use std::io::Write;
     use tempfile::TempDir;
+
+    fn mock_goose_windows_db(roaming: &Path) -> PathBuf {
+        let db = roaming
+            .join("Block")
+            .join("goose")
+            .join("data")
+            .join("sessions")
+            .join("sessions.db");
+        fs::create_dir_all(db.parent().unwrap()).unwrap();
+        File::create(&db).unwrap();
+        db
+    }
+
+    #[test]
+    fn test_goose_windows_db_explicit_appdata_is_authoritative() {
+        let dir = TempDir::new().unwrap();
+        let app_data = dir.path().join("中文 Roaming with spaces");
+        let native = dir.path().join("native");
+        let desktop = dir.path().join("desktop");
+        mock_goose_windows_db(&native);
+        mock_goose_windows_db(&desktop.join("AppData").join("Roaming"));
+
+        assert_eq!(
+            discover_goose_windows_db(
+                Some(app_data.clone()),
+                Some(native.clone()),
+                Some(desktop.clone()),
+            ),
+            None,
+            "an explicit APPDATA without a database must not select another Windows root"
+        );
+        let db = mock_goose_windows_db(&app_data);
+        assert_eq!(
+            discover_goose_windows_db(Some(app_data), Some(native), Some(desktop)),
+            Some(db)
+        );
+    }
+
+    #[test]
+    fn test_goose_windows_db_checks_desktop_when_native_database_is_missing() {
+        let dir = TempDir::new().unwrap();
+        let native = dir.path().join("native");
+        fs::create_dir_all(&native).unwrap();
+        let desktop = dir.path().join("desktop");
+        let desktop_db = mock_goose_windows_db(&desktop.join("AppData").join("Roaming"));
+
+        assert_eq!(
+            discover_goose_windows_db(None, Some(native.clone()), Some(desktop.clone())),
+            Some(desktop_db),
+            "an existing native directory without a Goose database must not hide Desktop"
+        );
+        let native_db = mock_goose_windows_db(&native);
+        assert_eq!(
+            discover_goose_windows_db(None, Some(native), Some(desktop)),
+            Some(native_db),
+            "the native database retains priority when both databases exist"
+        );
+    }
+
+    #[test]
+    fn test_goose_windows_db_rejects_relative_desktop_home() {
+        // Make a real matching relative path without changing the process cwd.
+        let cwd = std::env::current_dir().unwrap();
+        let dir = TempDir::new_in(&cwd).unwrap();
+        mock_goose_windows_db(&dir.path().join("AppData").join("Roaming"));
+        let relative_home = dir.path().strip_prefix(&cwd).unwrap().to_path_buf();
+        assert_eq!(
+            discover_goose_windows_db(None, None, Some(relative_home)),
+            None
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn test_scan_goose_preserves_existing_database_precedence() {
+        let dir = TempDir::new().unwrap();
+        let home = dir.path();
+        let custom = home.join("custom");
+        let xdg = home.join("xdg");
+        let app_data = home.join("appdata");
+        let windows_db = mock_goose_windows_db(&app_data);
+        let mut env = EnvGuard::capture(&[
+            "GOOSE_PATH_ROOT",
+            "XDG_DATA_HOME",
+            "APPDATA",
+            "TOKSCALE_EXTRA_DIRS",
+        ]);
+        env.set("GOOSE_PATH_ROOT", &custom);
+        env.set("XDG_DATA_HOME", &xdg);
+        env.set("APPDATA", &app_data);
+        env.remove("TOKSCALE_EXTRA_DIRS");
+        let existing = [
+            custom.join("data").join("sessions").join("sessions.db"),
+            xdg.join("goose").join("sessions").join("sessions.db"),
+            home.join("Library")
+                .join("Application Support")
+                .join("goose")
+                .join("sessions")
+                .join("sessions.db"),
+            home.join("Library")
+                .join("Application Support")
+                .join("Block")
+                .join("goose")
+                .join("sessions")
+                .join("sessions.db"),
+            home.join(".local")
+                .join("share")
+                .join("Block")
+                .join("goose")
+                .join("sessions")
+                .join("sessions.db"),
+        ];
+        for db in &existing {
+            fs::create_dir_all(db.parent().unwrap()).unwrap();
+            File::create(db).unwrap();
+        }
+        for db in &existing {
+            let result =
+                scan_all_clients_with_env_strategy(home.to_str().unwrap(), &["goose".into()], true);
+            assert_eq!(result.goose_db.as_ref(), Some(db));
+            fs::remove_file(db).unwrap();
+        }
+        let result =
+            scan_all_clients_with_env_strategy(home.to_str().unwrap(), &["goose".into()], true);
+        let expected = cfg!(target_os = "windows").then_some(windows_db);
+        assert_eq!(result.goose_db, expected);
+    }
+
+    #[test]
+    #[serial]
+    fn test_scan_goose_explicit_home_ignores_host_database_roots() {
+        let home = TempDir::new().unwrap();
+        let host = TempDir::new().unwrap();
+        let custom = host.path().join("custom");
+        let xdg = host.path().join("xdg");
+        let app_data = host.path().join("appdata");
+        mock_goose_windows_db(&app_data);
+        for db in [
+            custom.join("data").join("sessions").join("sessions.db"),
+            xdg.join("goose").join("sessions").join("sessions.db"),
+        ] {
+            fs::create_dir_all(db.parent().unwrap()).unwrap();
+            File::create(db).unwrap();
+        }
+        let own_db = home
+            .path()
+            .join(".local")
+            .join("share")
+            .join("goose")
+            .join("sessions")
+            .join("sessions.db");
+        fs::create_dir_all(own_db.parent().unwrap()).unwrap();
+        File::create(&own_db).unwrap();
+        let mut env = EnvGuard::capture(&["GOOSE_PATH_ROOT", "XDG_DATA_HOME", "APPDATA", "HOME"]);
+        env.set("GOOSE_PATH_ROOT", &custom);
+        env.set("XDG_DATA_HOME", &xdg);
+        env.set("APPDATA", &app_data);
+        let scan = || {
+            scan_all_clients_with_env_strategy(
+                home.path().to_str().unwrap(),
+                &["goose".into()],
+                false,
+            )
+            .goose_db
+        };
+        assert_eq!(scan(), Some(own_db.clone()));
+        fs::remove_file(own_db).unwrap();
+        assert_eq!(scan(), None);
+        #[cfg(target_os = "windows")]
+        {
+            let desktop = host.path().join("desktop");
+            mock_goose_windows_db(&desktop.join("AppData").join("Roaming"));
+            env.remove("APPDATA");
+            env.set("HOME", desktop);
+            assert_eq!(scan(), None, "--home must also ignore Desktop's fallback");
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    #[serial]
+    fn test_scan_goose_does_not_follow_windows_appdata_off_windows() {
+        let home = TempDir::new().unwrap();
+        let app_data = home.path().join("appdata");
+        mock_goose_windows_db(&app_data);
+        mock_goose_windows_db(&home.path().join("AppData").join("Roaming"));
+        let mut env = EnvGuard::capture(&["GOOSE_PATH_ROOT", "XDG_DATA_HOME", "APPDATA"]);
+        env.remove("GOOSE_PATH_ROOT");
+        env.set("XDG_DATA_HOME", home.path().join("xdg"));
+        env.set("APPDATA", app_data);
+        let result = scan_all_clients_with_env_strategy(
+            home.path().to_str().unwrap(),
+            &["goose".into()],
+            true,
+        );
+        assert_eq!(result.goose_db, None);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    #[serial]
+    fn test_scan_goose_discovers_windows_appdata_database() {
+        let home = TempDir::new().unwrap();
+        let app_data = home.path().join("中文 Roaming with spaces");
+        let db = mock_goose_windows_db(&app_data);
+        let mut env = EnvGuard::capture(&["GOOSE_PATH_ROOT", "XDG_DATA_HOME", "APPDATA"]);
+        env.remove("GOOSE_PATH_ROOT");
+        env.set("XDG_DATA_HOME", home.path().join("xdg"));
+        env.set("APPDATA", app_data);
+        let result = scan_all_clients_with_env_strategy(
+            home.path().to_str().unwrap(),
+            &["goose".into()],
+            true,
+        );
+        assert_eq!(result.goose_db, Some(db));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    #[serial]
+    fn test_scan_goose_checks_desktop_home_without_appdata() {
+        let home = TempDir::new().unwrap();
+        let desktop = home.path().join("desktop");
+        let desktop_db = mock_goose_windows_db(&desktop.join("AppData").join("Roaming"));
+        let mut env = EnvGuard::capture(&["GOOSE_PATH_ROOT", "XDG_DATA_HOME", "APPDATA", "HOME"]);
+        env.remove("GOOSE_PATH_ROOT");
+        env.set("XDG_DATA_HOME", home.path().join("xdg"));
+        env.set("HOME", &desktop);
+        // Never write fixtures in the system roaming directory. If this test
+        // runs on a developer's machine with Goose installed, its native DB
+        // must retain precedence over our temporary Desktop fixture.
+        let native_db = dirs::data_dir()
+            .map(|root| {
+                root.join("Block")
+                    .join("goose")
+                    .join("data")
+                    .join("sessions")
+                    .join("sessions.db")
+            })
+            .filter(|db| db.is_file());
+        for app_data in [None, Some("")] {
+            if let Some(value) = app_data {
+                env.set("APPDATA", value);
+            } else {
+                env.remove("APPDATA");
+            }
+            let result = scan_all_clients_with_env_strategy(
+                home.path().to_str().unwrap(),
+                &["goose".into()],
+                true,
+            );
+            assert_eq!(
+                result.goose_db,
+                native_db.clone().or(Some(desktop_db.clone()))
+            );
+        }
+    }
 
     fn scan_without_extra_dirs(home_dir: &str, clients: &[String]) -> ScanResult {
         let mut extra = EnvGuard::capture(&["TOKSCALE_EXTRA_DIRS", "TOKSCALE_HEADLESS_DIR"]);
