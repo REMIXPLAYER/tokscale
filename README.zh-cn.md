@@ -1937,7 +1937,7 @@ Crush 在项目级 SQLite 数据库（`crush.db`）中存储使用量。由于 C
 
 位置：`~/.local/share/goose/sessions/sessions.db`（同时扫描 `~/Library/Application Support/goose/`、`~/Library/Application Support/Block/goose/`、`~/.local/share/Block/goose/`；可通过 `GOOSE_PATH_ROOT` 覆盖）
 
-已有数据库位置保持优先。当前面的候选都没有数据库时，原生 Windows 扫描会尝试 `%APPDATA%\Block\goose\data\sessions\sessions.db`。`APPDATA` 未设置或为空时，先检查系统 Roaming 目录，再检查桌面版的 `<HOME>/AppData/Roaming` 后备目录；桌面版的 home 必须是 Windows 绝对路径。`--home` 扫描忽略这些进程环境决定的 Windows 位置。移动可执行文件不会改变数据库位置。
+已有数据库位置保持优先。当前面的候选都没有数据库时，原生 Windows 扫描会尝试 `%APPDATA%\Block\goose\data\sessions\sessions.db`。`APPDATA` 未设置或为空时，先检查系统 Roaming 目录，再检查桌面版的 `<HOME>/AppData/Roaming` 后备目录。`--home` 扫描忽略这些进程环境决定的 Windows 位置。移动可执行文件不会改变数据库位置。
 
 Goose 在 SQLite 的 `sessions.db` 中按会话保存使用量。Tokscale 从 `model_config_json` 提取模型，从 `provider_name` 提取提供商，并按会话累加输入/输出 Token 总数。当推理 Token 列有数据时也会被推断出来。
 

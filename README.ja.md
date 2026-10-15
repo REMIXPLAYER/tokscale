@@ -1900,7 +1900,7 @@ Crushはプロジェクトごとのデータベース（`crush.db`）に使用�
 
 場所: `~/.local/share/goose/sessions/sessions.db`（`~/Library/Application Support/goose/`、`~/Library/Application Support/Block/goose/`、`~/.local/share/Block/goose/` もスキャン; `GOOSE_PATH_ROOT` でオーバーライド可能）
 
-既存のデータベースの場所が優先されます。先行する候補にデータベースがない場合、ネイティブ Windows のスキャンは `%APPDATA%\Block\goose\data\sessions\sessions.db` を確認します。`APPDATA` が未設定または空の場合、システムの Roaming ディレクトリを確認し、その後 Desktop の `<HOME>/AppData/Roaming` を確認します。Desktop の home は Windows の絶対パスである必要があります。`--home` を指定したスキャンは、これらのプロセス環境に依存する Windows の場所を使用しません。実行ファイルを移動しても、データベースの場所は変わりません。
+既存のデータベースの場所が優先されます。先行する候補にデータベースがない場合、ネイティブ Windows のスキャンは `%APPDATA%\Block\goose\data\sessions\sessions.db` を確認します。`APPDATA` が未設定または空の場合、システムの Roaming ディレクトリを確認し、その後 Desktop の `<HOME>/AppData/Roaming` を確認します。`--home` を指定したスキャンは、これらのプロセス環境に依存する Windows の場所を使用しません。実行ファイルを移動しても、データベースの場所は変わりません。
 
 Goose はセッションごとの使用量を SQLite の `sessions.db` に保存します。Tokscale は `model_config_json` からモデル、`provider_name` からプロバイダ、そしてセッションごとに累積された入力/出力トークン合計を抽出します。推論トークンはそのカラムが値を持つ場合に推定されます。
 

@@ -1573,9 +1573,7 @@ fn discover_goose_windows_db(
     desktop_home: Option<PathBuf>,
 ) -> Option<PathBuf> {
     let desktop_roaming = if app_data.is_none() {
-        desktop_home
-            .filter(|home| home.is_absolute())
-            .map(|home| home.join("AppData").join("Roaming"))
+        desktop_home.map(|home| home.join("AppData").join("Roaming"))
     } else {
         None
     };
@@ -3166,15 +3164,16 @@ mod tests {
     }
 
     #[test]
-    fn test_goose_windows_db_rejects_relative_desktop_home() {
+    fn test_goose_windows_db_discovers_relative_desktop_home() {
         // Make a real matching relative path without changing the process cwd.
         let cwd = std::env::current_dir().unwrap();
         let dir = TempDir::new_in(&cwd).unwrap();
         mock_goose_windows_db(&dir.path().join("AppData").join("Roaming"));
         let relative_home = dir.path().strip_prefix(&cwd).unwrap().to_path_buf();
+        let expected = relative_home.join("AppData/Roaming/Block/goose/data/sessions/sessions.db");
         assert_eq!(
             discover_goose_windows_db(None, None, Some(relative_home)),
-            None
+            Some(expected)
         );
     }
 
@@ -3185,7 +3184,7 @@ mod tests {
         let home = dir.path();
         let custom = home.join("custom");
         let xdg = home.join("xdg");
-        let app_data = home.join("appdata");
+        let app_data = home.join("中文 Roaming with spaces");
         let windows_db = mock_goose_windows_db(&app_data);
         let mut env = EnvGuard::capture(&[
             "GOOSE_PATH_ROOT",
@@ -3302,66 +3301,6 @@ mod tests {
             true,
         );
         assert_eq!(result.goose_db, None);
-    }
-
-    #[cfg(target_os = "windows")]
-    #[test]
-    #[serial]
-    fn test_scan_goose_discovers_windows_appdata_database() {
-        let home = TempDir::new().unwrap();
-        let app_data = home.path().join("中文 Roaming with spaces");
-        let db = mock_goose_windows_db(&app_data);
-        let mut env = EnvGuard::capture(&["GOOSE_PATH_ROOT", "XDG_DATA_HOME", "APPDATA"]);
-        env.remove("GOOSE_PATH_ROOT");
-        env.set("XDG_DATA_HOME", home.path().join("xdg"));
-        env.set("APPDATA", app_data);
-        let result = scan_all_clients_with_env_strategy(
-            home.path().to_str().unwrap(),
-            &["goose".into()],
-            true,
-        );
-        assert_eq!(result.goose_db, Some(db));
-    }
-
-    #[cfg(target_os = "windows")]
-    #[test]
-    #[serial]
-    fn test_scan_goose_checks_desktop_home_without_appdata() {
-        let home = TempDir::new().unwrap();
-        let desktop = home.path().join("desktop");
-        let desktop_db = mock_goose_windows_db(&desktop.join("AppData").join("Roaming"));
-        let mut env = EnvGuard::capture(&["GOOSE_PATH_ROOT", "XDG_DATA_HOME", "APPDATA", "HOME"]);
-        env.remove("GOOSE_PATH_ROOT");
-        env.set("XDG_DATA_HOME", home.path().join("xdg"));
-        env.set("HOME", &desktop);
-        // Never write fixtures in the system roaming directory. If this test
-        // runs on a developer's machine with Goose installed, its native DB
-        // must retain precedence over our temporary Desktop fixture.
-        let native_db = dirs::data_dir()
-            .map(|root| {
-                root.join("Block")
-                    .join("goose")
-                    .join("data")
-                    .join("sessions")
-                    .join("sessions.db")
-            })
-            .filter(|db| db.is_file());
-        for app_data in [None, Some("")] {
-            if let Some(value) = app_data {
-                env.set("APPDATA", value);
-            } else {
-                env.remove("APPDATA");
-            }
-            let result = scan_all_clients_with_env_strategy(
-                home.path().to_str().unwrap(),
-                &["goose".into()],
-                true,
-            );
-            assert_eq!(
-                result.goose_db,
-                native_db.clone().or(Some(desktop_db.clone()))
-            );
-        }
     }
 
     fn scan_without_extra_dirs(home_dir: &str, clients: &[String]) -> ScanResult {

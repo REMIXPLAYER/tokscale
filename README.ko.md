@@ -1937,7 +1937,7 @@ Crush는 프로젝트별 SQLite 데이터베이스(`crush.db`)에 사용량을 �
 
 위치: `~/.local/share/goose/sessions/sessions.db` (`~/Library/Application Support/goose/`, `~/Library/Application Support/Block/goose/`, `~/.local/share/Block/goose/`도 스캔; `GOOSE_PATH_ROOT`로 오버라이드 가능)
 
-기존 데이터베이스 위치가 우선됩니다. 앞선 후보에 데이터베이스가 없으면 네이티브 Windows 스캔은 `%APPDATA%\Block\goose\data\sessions\sessions.db`를 확인합니다. `APPDATA`가 설정되지 않았거나 비어 있으면 시스템 Roaming 디렉터리를 먼저 확인한 뒤 Desktop의 `<HOME>/AppData/Roaming`을 확인합니다. Desktop의 home은 Windows 절대 경로여야 합니다. `--home` 스캔은 이러한 프로세스 환경 기반 Windows 위치를 사용하지 않습니다. 실행 파일을 옮겨도 데이터베이스 위치는 바뀌지 않습니다.
+기존 데이터베이스 위치가 우선됩니다. 앞선 후보에 데이터베이스가 없으면 네이티브 Windows 스캔은 `%APPDATA%\Block\goose\data\sessions\sessions.db`를 확인합니다. `APPDATA`가 설정되지 않았거나 비어 있으면 시스템 Roaming 디렉터리를 먼저 확인한 뒤 Desktop의 `<HOME>/AppData/Roaming`을 확인합니다. `--home` 스캔은 이러한 프로세스 환경 기반 Windows 위치를 사용하지 않습니다. 실행 파일을 옮겨도 데이터베이스 위치는 바뀌지 않습니다.
 
 Goose는 세션별 사용량을 SQLite `sessions.db`에 저장합니다. Tokscale은 `model_config_json`에서 모델, `provider_name`에서 공급자, 그리고 세션별로 누적된 입력/출력 토큰 합계를 추출합니다. 추론 토큰은 해당 컬럼이 채워져 있을 때 추정됩니다.
 
