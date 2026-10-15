@@ -1525,7 +1525,7 @@ AI 编程工具将会话数据存储在跨平台位置。大多数工具在所�
 
 > **Devin Desktop 代理支持**：本地用量解析适用于会在 NDJSON 流中发出 `usage_update` 事件的 ACP 连接代理（例如 Cascade/Windsurf、claude-code、opencode）。默认的 **devin-cloud** 代理不会发出本地 `usage_update` 事件——其用量仍保留在服务器端，tokscale 无法在没有账号级 API 的情况下跟踪它。
 
-> **注意**：在 Windows 上，`~` 扩展为 `%USERPROFILE%`（例如 `C:\Users\用户名`）。这些工具故意使用 Unix 风格的路径（如 `.local/share`）而不是 Windows 原生路径（如 `%APPDATA%`），以实现跨平台一致性。
+> **注意**：在 Windows 上，`~` 扩展为 `%USERPROFILE%`（例如 `C:\Users\用户名`）。部分工具使用 Unix 风格的路径（如 `.local/share`）以保持跨平台一致性，另一些工具（包括 Goose）则使用上表列出的 Windows 原生路径（如 `%APPDATA%`）。
 
 #### Windows 特定配置
 
@@ -1937,7 +1937,7 @@ Crush 在项目级 SQLite 数据库（`crush.db`）中存储使用量。由于 C
 
 位置：`~/.local/share/goose/sessions/sessions.db`（同时扫描 `~/Library/Application Support/goose/`、`~/Library/Application Support/Block/goose/`、`~/.local/share/Block/goose/`；可通过 `GOOSE_PATH_ROOT` 覆盖）
 
-已有数据库位置保持优先。当前面的候选都没有数据库时，原生 Windows 扫描会尝试 `%APPDATA%\Block\goose\data\sessions\sessions.db`。`APPDATA` 未设置或为空时，先检查系统 Roaming 目录，再检查桌面版的 `<HOME>/AppData/Roaming` 后备目录。`--home` 扫描忽略这些进程环境决定的 Windows 位置。移动可执行文件不会改变数据库位置。
+原生 Windows 扫描先检查 `%APPDATA%\Block\goose\data\sessions\sessions.db`，再检查 XDG 和旧版位置。`APPDATA` 未设置或为空时，先检查系统 Roaming 目录，再检查桌面版的 `<HOME>/AppData/Roaming` 后备目录。`--home` 扫描忽略进程环境决定的 Windows 位置，并检查 `<home>/AppData/Roaming/Block/goose/data/sessions/sessions.db`。绝对路径 `GOOSE_PATH_ROOT` 始终优先，即使其数据库尚不存在也不回退；相对路径值会被忽略。移动可执行文件不会改变数据库位置。
 
 Goose 在 SQLite 的 `sessions.db` 中按会话保存使用量。Tokscale 从 `model_config_json` 提取模型，从 `provider_name` 提取提供商，并按会话累加输入/输出 Token 总数。当推理 Token 列有数据时也会被推断出来。
 

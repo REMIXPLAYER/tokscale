@@ -1523,7 +1523,7 @@ AI 코딩 도구들은 크로스 플랫폼 위치에 세션 데이터를 저장�
 | Hindsight | `$HINDSIGHT_HOME/usage/` (폴백: `~/.hindsight/usage/`) | `%HINDSIGHT_HOME%\usage\` (폴백: `%USERPROFILE%\.hindsight\usage\`) | `tokscale hindsight sync`를 통한 API 동기화; Hindsight 자체는 로컬 세션 로그를 남기지 않으므로 LLM 추적 API에서 추가 전용 JSONL 캐시로 동기화 |
 | Muse Code | `~/.local/share/muse/sessions/` | `%USERPROFILE%\.local\share\muse\sessions\` | 전 플랫폼 공통 XDG 경로; `session.jsonl`의 `model_completed` 사용량 이벤트와 `subagent/` 기록 파싱 |
 
-> **참고**: Windows에서 `~`는 `%USERPROFILE%`로 확장됩니다 (예: `C:\Users\사용자이름`). 이러한 도구들은 `%APPDATA%`와 같은 Windows 기본 경로 대신 크로스 플랫폼 일관성을 위해 의도적으로 Unix 스타일 경로(`.local/share` 등)를 사용합니다.
+> **참고**: Windows에서 `~`는 `%USERPROFILE%`로 확장됩니다 (예: `C:\Users\사용자이름`). 일부 도구는 크로스 플랫폼 일관성을 위해 Unix 스타일 경로(`.local/share` 등)를 사용하고, Goose를 포함한 다른 도구는 위 표의 Windows 기본 경로(`%APPDATA%` 등)를 사용합니다.
 
 > **Devin Desktop 에이전트 지원**: 로컬 사용량 파싱은 NDJSON 스트림에서 `usage_update` 이벤트를 내보내는 ACP 연결 에이전트(예: Cascade/Windsurf, claude-code, opencode)에서 동작합니다. 기본 **devin-cloud** 에이전트는 로컬 `usage_update` 이벤트를 내보내지 않으므로, 계정 수준 API 없이는 tokscale로 추적할 수 없으며 사용량은 서버에만 남습니다.
 
@@ -1937,7 +1937,7 @@ Crush는 프로젝트별 SQLite 데이터베이스(`crush.db`)에 사용량을 �
 
 위치: `~/.local/share/goose/sessions/sessions.db` (`~/Library/Application Support/goose/`, `~/Library/Application Support/Block/goose/`, `~/.local/share/Block/goose/`도 스캔; `GOOSE_PATH_ROOT`로 오버라이드 가능)
 
-기존 데이터베이스 위치가 우선됩니다. 앞선 후보에 데이터베이스가 없으면 네이티브 Windows 스캔은 `%APPDATA%\Block\goose\data\sessions\sessions.db`를 확인합니다. `APPDATA`가 설정되지 않았거나 비어 있으면 시스템 Roaming 디렉터리를 먼저 확인한 뒤 Desktop의 `<HOME>/AppData/Roaming`을 확인합니다. `--home` 스캔은 이러한 프로세스 환경 기반 Windows 위치를 사용하지 않습니다. 실행 파일을 옮겨도 데이터베이스 위치는 바뀌지 않습니다.
+네이티브 Windows 스캔은 XDG 및 기존 위치보다 먼저 `%APPDATA%\Block\goose\data\sessions\sessions.db`를 확인합니다. `APPDATA`가 설정되지 않았거나 비어 있으면 시스템 Roaming 디렉터리를 먼저 확인한 뒤 Desktop의 `<HOME>/AppData/Roaming`을 확인합니다. `--home` 스캔은 프로세스 환경 기반 Windows 위치를 사용하지 않으며 `<home>/AppData/Roaming/Block/goose/data/sessions/sessions.db`도 확인합니다. 절대 경로인 `GOOSE_PATH_ROOT`가 지정되면 데이터베이스가 없어도 다른 위치로 폴백하지 않으며, 상대 경로 값은 무시합니다. 실행 파일을 옮겨도 데이터베이스 위치는 바뀌지 않습니다.
 
 Goose는 세션별 사용량을 SQLite `sessions.db`에 저장합니다. Tokscale은 `model_config_json`에서 모델, `provider_name`에서 공급자, 그리고 세션별로 누적된 입력/출력 토큰 합계를 추출합니다. 추론 토큰은 해당 컬럼이 채워져 있을 때 추정됩니다.
 

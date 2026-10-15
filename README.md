@@ -1566,7 +1566,7 @@ AI coding tools store their session data in cross-platform locations. Most tools
 
 > **Devin Desktop agent support**: Local usage parsing works for ACP-connected agents (e.g. Cascade/Windsurf, claude-code, opencode) that emit `usage_update` events in the NDJSON stream. The default **devin-cloud** agent does not emit local `usage_update` events — its usage stays server-side and cannot be tracked by tokscale without an account-level API.
 
-> **Note**: On Windows, `~` expands to `%USERPROFILE%` (e.g., `C:\Users\YourName`). These tools intentionally use Unix-style paths (like `.local/share`) even on Windows for cross-platform consistency, rather than Windows-native paths like `%APPDATA%`.
+> **Note**: On Windows, `~` expands to `%USERPROFILE%` (e.g., `C:\Users\YourName`). Some tools use Unix-style paths (like `.local/share`) for cross-platform consistency, while others, including Goose, use Windows-native paths like `%APPDATA%`, as listed above.
 
 #### Windows-Specific Configuration
 
@@ -1991,7 +1991,7 @@ Crush stores usage in per-project SQLite databases (`crush.db`). Tokscale import
 
 Location: `~/.local/share/goose/sessions/sessions.db` (also scans `~/Library/Application Support/goose/`, `~/Library/Application Support/Block/goose/`, `~/.local/share/Block/goose/`; override via `GOOSE_PATH_ROOT`)
 
-Existing database locations retain priority. When none contains a database, native Windows scans try `%APPDATA%\Block\goose\data\sessions\sessions.db`. With `APPDATA` unset or empty, the native roaming directory is checked before Desktop's `<HOME>/AppData/Roaming` fallback. `--home` scans ignore these process-specific Windows locations. Moving the executable does not relocate the database.
+Native Windows scans check `%APPDATA%\Block\goose\data\sessions\sessions.db` before XDG and legacy locations. With `APPDATA` unset or empty, the native roaming directory is checked before Desktop's `<HOME>/AppData/Roaming` fallback. `--home` scans ignore process-specific Windows locations and also check `<home>/AppData/Roaming/Block/goose/data/sessions/sessions.db`. An absolute `GOOSE_PATH_ROOT` is authoritative even when its database is absent; relative values are ignored. Moving the executable does not relocate the database.
 
 Goose stores per-session usage in a SQLite `sessions.db`. Tokscale extracts the model from `model_config_json`, the provider from `provider_name`, and accumulated input/output token totals per session. Reasoning tokens are inferred when the column is populated.
 

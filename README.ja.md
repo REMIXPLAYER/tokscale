@@ -1526,7 +1526,7 @@ AIコーディングツールはクロスプラットフォームの場所にセ
 
 > **Devin Desktop のエージェント対応**: ローカル使用量の解析は、NDJSON ストリームで `usage_update` イベントを出力する ACP 接続エージェント（例: Cascade/Windsurf、claude-code、opencode）で機能します。既定の **devin-cloud** エージェントはローカルの `usage_update` を出力しないため、使用量はサーバー側にとどまり、アカウントレベルの API なしには tokscale で追跡できません。
 
-> **注**: Windowsでは`~`は`%USERPROFILE%`に展開されます（例：`C:\Users\ユーザー名`）。これらのツールは`%APPDATA%`のようなWindowsネイティブパスではなく、クロスプラットフォームの一貫性のためにUnixスタイルのパス（`.local/share`など）を意図的に使用しています。
+> **注**: Windowsでは`~`は`%USERPROFILE%`に展開されます（例：`C:\Users\ユーザー名`）。一部のツールはクロスプラットフォームの一貫性のためにUnixスタイルのパス（`.local/share`など）を使用し、Gooseを含む他のツールは上の表に示すWindowsネイティブパス（`%APPDATA%`など）を使用します。
 
 #### Windows固有の設定
 
@@ -1900,7 +1900,7 @@ Crushはプロジェクトごとのデータベース（`crush.db`）に使用�
 
 場所: `~/.local/share/goose/sessions/sessions.db`（`~/Library/Application Support/goose/`、`~/Library/Application Support/Block/goose/`、`~/.local/share/Block/goose/` もスキャン; `GOOSE_PATH_ROOT` でオーバーライド可能）
 
-既存のデータベースの場所が優先されます。先行する候補にデータベースがない場合、ネイティブ Windows のスキャンは `%APPDATA%\Block\goose\data\sessions\sessions.db` を確認します。`APPDATA` が未設定または空の場合、システムの Roaming ディレクトリを確認し、その後 Desktop の `<HOME>/AppData/Roaming` を確認します。`--home` を指定したスキャンは、これらのプロセス環境に依存する Windows の場所を使用しません。実行ファイルを移動しても、データベースの場所は変わりません。
+ネイティブ Windows のスキャンは、XDGやレガシーの場所より先に `%APPDATA%\Block\goose\data\sessions\sessions.db` を確認します。`APPDATA` が未設定または空の場合、システムの Roaming ディレクトリを確認し、その後 Desktop の `<HOME>/AppData/Roaming` を確認します。`--home` を指定したスキャンはプロセス環境に依存する Windows の場所を使用せず、`<home>/AppData/Roaming/Block/goose/data/sessions/sessions.db` も確認します。絶対パスの `GOOSE_PATH_ROOT` はデータベースが存在しなくても優先され、他の場所にはフォールバックしません。相対パスの値は無視します。実行ファイルを移動しても、データベースの場所は変わりません。
 
 Goose はセッションごとの使用量を SQLite の `sessions.db` に保存します。Tokscale は `model_config_json` からモデル、`provider_name` からプロバイダ、そしてセッションごとに累積された入力/出力トークン合計を抽出します。推論トークンはそのカラムが値を持つ場合に推定されます。
 
