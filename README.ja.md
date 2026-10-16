@@ -1900,7 +1900,7 @@ Crushはプロジェクトごとのデータベース（`crush.db`）に使用�
 
 場所: `~/.local/share/goose/sessions/sessions.db`（`~/Library/Application Support/goose/`、`~/Library/Application Support/Block/goose/`、`~/.local/share/Block/goose/` もスキャン; `GOOSE_PATH_ROOT` でオーバーライド可能）
 
-ネイティブ Windows のスキャンは、XDGやレガシーの場所より先に `%APPDATA%\Block\goose\data\sessions\sessions.db` を確認します。`APPDATA` が未設定または空の場合、システムの Roaming ディレクトリを確認し、その後 Desktop の `<HOME>/AppData/Roaming` を確認します。`--home` を指定したスキャンはプロセス環境に依存する Windows の場所を使用せず、`<home>/AppData/Roaming/Block/goose/data/sessions/sessions.db` も確認します。絶対パスの `GOOSE_PATH_ROOT` はデータベースが存在しなくても優先され、他の場所にはフォールバックしません。相対パスの値は無視します。実行ファイルを移動しても、データベースの場所は変わりません。
+ネイティブ Windows のスキャンは、XDGやレガシーの場所より先に `%APPDATA%\Block\goose\data\sessions\sessions.db` を確認します。`APPDATA` が未設定または空の場合、システムの Roaming ディレクトリを確認し、その後 Desktop の `<HOME>/AppData/Roaming` を確認します。`--home` を指定したスキャンは `GOOSE_PATH_ROOT` とプロセス環境に依存する Windows の場所を使用せず、`<home>/AppData/Roaming/Block/goose/data/sessions/sessions.db` も確認します。`--home` を指定しない場合、絶対パスの `GOOSE_PATH_ROOT` はデータベースが存在しなくても優先され、他の場所にはフォールバックしません。相対パスの値は無視します。実行ファイルを移動しても、データベースの場所は変わりません。
 
 Goose はセッションごとの使用量を SQLite の `sessions.db` に保存します。Tokscale は `model_config_json` からモデル、`provider_name` からプロバイダ、そしてセッションごとに累積された入力/出力トークン合計を抽出します。推論トークンはそのカラムが値を持つ場合に推定されます。
 

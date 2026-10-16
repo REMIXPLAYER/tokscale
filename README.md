@@ -1991,7 +1991,7 @@ Crush stores usage in per-project SQLite databases (`crush.db`). Tokscale import
 
 Location: `~/.local/share/goose/sessions/sessions.db` (also scans `~/Library/Application Support/goose/`, `~/Library/Application Support/Block/goose/`, `~/.local/share/Block/goose/`; override via `GOOSE_PATH_ROOT`)
 
-Native Windows scans check `%APPDATA%\Block\goose\data\sessions\sessions.db` before XDG and legacy locations. With `APPDATA` unset or empty, the native roaming directory is checked before Desktop's `<HOME>/AppData/Roaming` fallback. `--home` scans ignore process-specific Windows locations and also check `<home>/AppData/Roaming/Block/goose/data/sessions/sessions.db`. An absolute `GOOSE_PATH_ROOT` is authoritative even when its database is absent; relative values are ignored. Moving the executable does not relocate the database.
+Native Windows scans check `%APPDATA%\Block\goose\data\sessions\sessions.db` before XDG and legacy locations. With `APPDATA` unset or empty, the native roaming directory is checked before Desktop's `<HOME>/AppData/Roaming` fallback. `--home` scans ignore `GOOSE_PATH_ROOT` and process-specific Windows locations, and also check `<home>/AppData/Roaming/Block/goose/data/sessions/sessions.db`. Without `--home`, an absolute `GOOSE_PATH_ROOT` is authoritative even when its database is absent; relative values are ignored. Moving the executable does not relocate the database.
 
 Goose stores per-session usage in a SQLite `sessions.db`. Tokscale extracts the model from `model_config_json`, the provider from `provider_name`, and accumulated input/output token totals per session. Reasoning tokens are inferred when the column is populated.
 
