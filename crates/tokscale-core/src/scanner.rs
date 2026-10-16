@@ -1580,13 +1580,7 @@ fn discover_goose_windows_db(
     [app_data.or(native_roaming), desktop_roaming]
         .into_iter()
         .flatten()
-        .map(|root| {
-            root.join("Block")
-                .join("goose")
-                .join("data")
-                .join("sessions")
-                .join("sessions.db")
-        })
+        .map(|root| root.join("Block/goose/data/sessions/sessions.db"))
         .find(|db| db.is_file())
 }
 
@@ -3116,8 +3110,7 @@ mod tests {
     use std::io::Write;
     use tempfile::TempDir;
 
-    fn write_db(path: impl AsRef<Path>) -> PathBuf {
-        let db = path.as_ref().to_path_buf();
+    fn write_db(db: PathBuf) -> PathBuf {
         fs::create_dir_all(db.parent().unwrap()).unwrap();
         File::create(&db).unwrap();
         db
@@ -3239,6 +3232,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_goose_windows_db_prefers_appdata_then_native_then_desktop() {
         let dir = TempDir::new().unwrap();
         let app_data = dir.path().join("appdata");
