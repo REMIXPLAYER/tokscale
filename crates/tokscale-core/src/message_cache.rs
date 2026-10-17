@@ -5535,10 +5535,46 @@ mod tests {
     }
 
     #[test]
-    fn test_grok_duration_parser_version_invalidates_v7_entries() {
-        // Unchanged logs keep their fingerprint; discard v7 entries so
-        // timing and the start-anchored timestamp are rebuilt together.
-        assert_eq!(parser_version(ClientId::Grok), 8);
+    #[serial_test::serial]
+    fn grok_v7_shards_are_reparsed_with_inference_duration() {
+        let home = TempDir::new().unwrap();
+        let _cache_env = sandbox_cache_env(home.path());
+        let path = home.path().join(".grok/logs/unified.jsonl");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, r#"{"ts":"2023-11-14T22:13:20Z","pid":17,"sid":"session-1","msg":"shell.turn.inference_done","ctx":{"prompt_tokens":100,"completion_tokens":25,"model_elapsed_ms":500}}"#).unwrap();
+        let fingerprint = SourceFingerprint::from_grok_path(&path).unwrap();
+        let current = CacheIdentity::for_client(ClientId::Grok);
+        let previous = CacheIdentity {
+            namespace: current.namespace,
+            parser_version: 7,
+        };
+        let mut stale = test_entry(previous, &path, "session-1");
+        stale.fingerprint = fingerprint.clone();
+        stale.messages[0].timestamp = 1_700_000_000_000;
+        let shard = cache_shard_path(current, &path);
+        ensure_cache_dir(shard.parent().unwrap()).unwrap();
+        write_shard_with_limit(&shard, previous, &[stale], MAX_CACHE_SHARD_BYTES).unwrap();
+
+        let scan = || {
+            crate::parse_all_messages_with_pricing_with_env_strategy(
+                home.path().to_str().unwrap(),
+                &["grok".to_string()],
+                None,
+                false,
+                &crate::scanner::ScannerSettings::default(),
+            )
+        };
+        let cold = scan();
+        assert_eq!(cold.len(), 1);
+        assert_eq!(cold[0].timestamp, 1_699_999_999_500);
+        assert_eq!(cold[0].duration_ms, Some(500));
+        let cached = SourceMessageCache::load().get(current, &path).unwrap();
+        assert_eq!(cached.messages, cold);
+        assert_eq!(scan(), cold);
+        assert_eq!(
+            SourceFingerprint::from_grok_path(&path).unwrap(),
+            fingerprint
+        );
     }
 
     #[test]
