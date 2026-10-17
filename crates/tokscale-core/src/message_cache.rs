@@ -1588,7 +1588,9 @@ fn parser_version(client: ClientId) -> u32 {
         // of stopping at the first one, and usage dedup keys carry the record's
         // file position. Both change the parse of byte-identical input, so
         // cached entries hold truncated and under-deduplicated output (#1031).
-        ClientId::Grok => 7,
+        // v7->v8: unified inference durations are now measured and anchored
+        // at request start, while overlap selection retains the source clock.
+        ClientId::Grok => 8,
         // Droid's cumulative session totals now anchor on the settings file's
         // mtime (floored at providerLockTimestamp) instead of the lock
         // timestamp alone, so a long-running session stops reporting every
@@ -5533,11 +5535,10 @@ mod tests {
     }
 
     #[test]
-    fn test_grok_resilient_line_reader_parser_version_invalidates_v6_entries() {
-        // A Grok session file that is never appended to again keeps its
-        // fingerprint forever, so only the version bump discards the truncated
-        // v6 parse and forces a cold reparse.
-        assert_eq!(parser_version(ClientId::Grok), 7);
+    fn test_grok_duration_parser_version_invalidates_v7_entries() {
+        // Unchanged logs keep their fingerprint; discard v7 entries so
+        // timing and the start-anchored timestamp are rebuilt together.
+        assert_eq!(parser_version(ClientId::Grok), 8);
     }
 
     #[test]

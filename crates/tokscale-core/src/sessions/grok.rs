@@ -11,8 +11,8 @@
 //! write per-inference token breakdowns to `~/.grok/logs/unified.jsonl`.
 
 use super::utils::{
-    extract_i64, extract_string, file_modified_timestamp_ms, lossy_lines, parse_timestamp_value,
-    read_file_or_none,
+    back_anchor_timestamp, extract_i64, extract_string, file_modified_timestamp_ms, lossy_lines,
+    parse_timestamp_value, read_file_or_none,
 };
 use super::{normalize_workspace_key, workspace_label_from_key, UnifiedMessage};
 use crate::TokenBreakdown;
@@ -695,10 +695,18 @@ fn parse_grok_unified_log_snapshot(
         let Some(pid) = optional_non_negative_i64(value.get("pid")) else {
             continue;
         };
-        let timestamp = value
-            .get("ts")
-            .and_then(parse_timestamp_value)
-            .unwrap_or(fallback_timestamp);
+        let recorded_timestamp = value.get("ts").and_then(parse_timestamp_value);
+        let duration_ms = context
+            .get("model_elapsed_ms")
+            .and_then(Value::as_i64)
+            .filter(|duration| *duration > 0)
+            .filter(|duration| recorded_timestamp.is_some_and(|end| end > *duration));
+        let end_timestamp = recorded_timestamp.unwrap_or(fallback_timestamp);
+        // inference_done is a completion clock. Never back-date a file-mtime
+        // fallback or manufacture a non-positive request start.
+        let timestamp = duration_ms.map_or(end_timestamp, |duration| {
+            back_anchor_timestamp(end_timestamp, duration)
+        });
         let reasoning = reasoning_tokens.min(completion_tokens);
         let dedup_key = unified_log_dedup_key(&session_id, &value);
         if !seen.insert(dedup_key.clone()) {
@@ -760,6 +768,7 @@ fn parse_grok_unified_log_snapshot(
             dedup_key,
             loop_index == 1,
         );
+        message.duration_ms = duration_ms;
         message.model_attribution_conflicted = model_attribution_conflicted;
         message.session_id = session_id;
         message.message_count = i32::from(message.is_turn_start);
@@ -966,15 +975,20 @@ pub fn prefer_unified_log_messages(mut messages: Vec<UnifiedMessage>) -> Vec<Uni
         .iter()
         .filter(|message| is_unified_log_message(message))
     {
+        // Legacy rows retain their completion clock. Reconstruct the unified
+        // source clock so start anchoring does not change overlap selection.
+        let source_timestamp = message
+            .timestamp
+            .saturating_add(message.duration_ms.unwrap_or(0));
         *covered_activity
             .entry((
                 message.session_id.clone(),
-                message.timestamp,
+                source_timestamp,
                 message.tokens.total(),
             ))
             .or_insert(0usize) += 1;
         *covered_fallback_timestamps
-            .entry((message.session_id.clone(), message.timestamp))
+            .entry((message.session_id.clone(), source_timestamp))
             .or_insert(0usize) += 1;
     }
 
@@ -1600,6 +1614,116 @@ mod tests {
         assert_eq!(messages[3].tokens.total(), 11);
         assert_eq!(messages[3].message_count, 0);
         assert!(!messages[3].is_turn_start);
+    }
+
+    #[test]
+    fn unified_duration_is_start_anchored_and_preserves_legacy_overlap_selection() {
+        let event = serde_json::json!({
+            "ts": "2023-11-14T22:13:20Z", "pid": 17, "sid": "session-1",
+            "event_id": "request-1", "msg": "shell.turn.inference_done",
+            "ctx": { "prompt_tokens": 100, "cached_prompt_tokens": 60,
+                "completion_tokens": 25, "reasoning_tokens": 5,
+                "model_elapsed_ms": 500, "elapsed_since_turn_start_ms": 90000 }
+        });
+        let (_temp, path) = write_unified_fixture(&format!("{event}\n"));
+        let timed = parse_grok_unified_log_file(&path).remove(0);
+        assert_eq!(timed.duration_ms, Some(500));
+        assert_eq!(timed.timestamp, 1_699_999_999_500);
+        assert_eq!(
+            timed.timestamp + timed.duration_ms.unwrap(),
+            1_700_000_000_000
+        );
+        assert_eq!(timed.tokens.total(), 125);
+
+        let mut untimed_event = event.clone();
+        untimed_event["ctx"]
+            .as_object_mut()
+            .unwrap()
+            .remove("model_elapsed_ms");
+        let (_untimed_temp, untimed_path) = write_unified_fixture(&format!("{untimed_event}\n"));
+        let untimed = parse_grok_unified_log_file(&untimed_path).remove(0);
+        assert_eq!(untimed.duration_ms, None);
+        assert_eq!(untimed.timestamp, 1_700_000_000_000);
+        assert_eq!(timed.tokens, untimed.tokens);
+        assert_eq!(timed.dedup_key, untimed.dedup_key);
+
+        let entries = crate::aggregate_model_usage_entries(
+            vec![timed.clone(), untimed.clone()],
+            &crate::GroupBy::ClientSession,
+        );
+        assert_eq!(entries[0].output, 40);
+        assert_eq!(entries[0].reasoning, 10);
+        assert_eq!(entries[0].performance.total_duration_ms, 500);
+        assert_eq!(entries[0].performance.timed_tokens, 125);
+        assert_eq!(entries[0].performance.sample_count, 1);
+
+        let mut legacy = untimed.clone();
+        legacy.dedup_key = Some("grok:session-1:usage:0:turn-1".to_string());
+        assert_eq!(
+            prefer_unified_log_messages(vec![legacy, timed.clone()]),
+            vec![timed.clone()]
+        );
+        let mut fallback = untimed.clone();
+        fallback.dedup_key = Some("grok:session-1:0".to_string());
+        fallback.tokens.input += 1;
+        assert_eq!(
+            prefer_unified_log_messages(vec![fallback, timed.clone()]),
+            vec![timed]
+        );
+    }
+
+    #[test]
+    fn invalid_unified_timing_keeps_usage_and_its_original_clock() {
+        for (clock, duration) in [
+            (
+                Some(serde_json::json!("2023-11-14T22:13:20Z")),
+                serde_json::Value::Null,
+            ),
+            (
+                Some(serde_json::json!("2023-11-14T22:13:20Z")),
+                serde_json::json!(0),
+            ),
+            (
+                Some(serde_json::json!("2023-11-14T22:13:20Z")),
+                serde_json::json!(-1),
+            ),
+            (
+                Some(serde_json::json!("2023-11-14T22:13:20Z")),
+                serde_json::json!("500"),
+            ),
+            (
+                Some(serde_json::json!("2023-11-14T22:13:20Z")),
+                serde_json::json!(1.5),
+            ),
+            (
+                Some(serde_json::json!("2023-11-14T22:13:20Z")),
+                serde_json::json!(9223372036854775808u64),
+            ),
+            (
+                Some(serde_json::json!("1970-01-01T00:00:00.500Z")),
+                serde_json::json!(500),
+            ),
+            (Some(serde_json::json!("invalid")), serde_json::json!(500)),
+            (None, serde_json::json!(500)),
+        ] {
+            let mut event = serde_json::json!({
+                "pid": 17, "sid": "session-1", "msg": "shell.turn.inference_done",
+                "ctx": { "prompt_tokens": 100, "completion_tokens": 25, "model_elapsed_ms": duration }
+            });
+            if let Some(clock) = clock {
+                event["ts"] = clock;
+            }
+            let (_temp, path) = write_unified_fixture(&format!("{event}\n"));
+            let messages = parse_grok_unified_log_file(&path);
+            assert_eq!(messages.len(), 1, "{event}");
+            assert_eq!(messages[0].tokens.total(), 125, "{event}");
+            assert_eq!(messages[0].duration_ms, None, "{event}");
+            let expected_timestamp = event
+                .get("ts")
+                .and_then(parse_timestamp_value)
+                .unwrap_or_else(|| file_modified_timestamp_ms(&path));
+            assert_eq!(messages[0].timestamp, expected_timestamp);
+        }
     }
 
     #[test]
