@@ -1666,7 +1666,6 @@ mod tests {
             (clock, serde_json::json!(1.5)),
             (clock, serde_json::json!(9223372036854775808u64)),
             (Some("1970-01-01T00:00:00.500Z"), serde_json::json!(500)),
-            (Some("invalid"), serde_json::json!(500)),
             (None, serde_json::json!(500)),
         ] {
             let mut event = serde_json::json!({

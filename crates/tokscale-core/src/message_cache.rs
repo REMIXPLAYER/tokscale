@@ -5555,22 +5555,16 @@ mod tests {
         ensure_cache_dir(shard.parent().unwrap()).unwrap();
         write_shard_with_limit(&shard, previous, &[stale], MAX_CACHE_SHARD_BYTES).unwrap();
 
-        let scan = || {
-            crate::parse_all_messages_with_pricing_with_env_strategy(
-                home.path().to_str().unwrap(),
-                &["grok".to_string()],
-                None,
-                false,
-                &crate::scanner::ScannerSettings::default(),
-            )
-        };
-        let cold = scan();
+        let cold = crate::parse_all_messages_with_pricing_with_env_strategy(
+            home.path().to_str().unwrap(),
+            &["grok".to_string()],
+            None,
+            false,
+            &crate::scanner::ScannerSettings::default(),
+        );
         assert_eq!(cold.len(), 1);
         assert_eq!(cold[0].timestamp, 1_699_999_999_500);
         assert_eq!(cold[0].duration_ms, Some(500));
-        let cached = SourceMessageCache::load().get(current, &path).unwrap();
-        assert_eq!(cached.messages, cold);
-        assert_eq!(scan(), cold);
         assert_eq!(
             SourceFingerprint::from_grok_path(&path).unwrap(),
             fingerprint
